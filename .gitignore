@@ -1,0 +1,44 @@
+# Python: ambientes locais, cache e artefatos de execucao
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Segredos e configuracoes locais (mantenha exemplos sem credenciais no Git)
+.env
+.env.*
+!.env.example
+*.secret
+secrets.h
+config.local.h
+
+# Banco de dados local e arquivos temporarios SQLite
+backend/*.db
+backend/*.db-*
+*.sqlite
+*.sqlite3
+
+# Arduino IDE / PlatformIO: arquivos gerados e configuracoes locais
+.pio/
+.arduino/
+build/
+out/
+*.elf
+*.hex
+*.bin
+*.map
+*.eep
+*.lss
+*.sym
+*.ino.cpp
+
+# Editores e sistema operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
