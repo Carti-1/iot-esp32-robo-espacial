@@ -1,5 +1,5 @@
 // ====================================================================
-// ROBÔ EXPLORADOR ESPACIAL - ESP32 FÍSICO (ETAPA 02)
+// ROBÔ EXPLORADOR ESPACIAL - ESP32 FÍSICO (ETAPAS 02 E 03)
 // Sensores: DHT22, LDR (Fotorresistor), HC-SR04 (Ultrassónico)
 // Atuadores: LEDs (Verde/Vermelho), Motores DC
 // Comunicação: HTTP GET (Firebase) + HTTP GET (CallmeBot/WhatsApp)
@@ -8,7 +8,6 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <time.h>
-#include <UrlEncode.h>
 #include "DHTesp.h"
 #include "secrets.h"
 // --------------------------------------------------------------------
@@ -35,11 +34,14 @@ const int PIN_LDR = 35;         // Fotorresistor (Pino Analógico ADC1)
 
 // Sensor Ultrassónico HC-SR04
 const int PIN_TRIG = 12;
-const int PIN_ECHO = 11;
+// GPIO11 costuma ser reservado para a flash nos ESP32 Dev Module; ECHO vai ao GPIO13.
+const int PIN_ECHO = 13;
 
 // Motores DC
-const int PIN_MOTOR_ESQ = 26;  
-const int PIN_MOTOR_DIR = 27;  
+const int PIN_MOTOR_ESQ_IN1 = 26;
+const int PIN_MOTOR_ESQ_IN2 = 27;
+const int PIN_MOTOR_DIR_IN3 = 32;
+const int PIN_MOTOR_DIR_IN4 = 33;
 
 // --------------------------------------------------------------------
 // OBJETOS E VARIÁVEIS GLOBAIS
@@ -71,6 +73,28 @@ String timestampUTC() {
   char texto[21];
   strftime(texto, sizeof(texto), "%Y-%m-%dT%H:%M:%SZ", &utc);
   return String(texto);
+}
+
+String urlEncode(const String& texto) {
+  const char* hex = "0123456789ABCDEF";
+  String codificado;
+  codificado.reserve(texto.length() * 3);
+  for (size_t i = 0; i < texto.length(); i++) {
+    uint8_t c = static_cast<uint8_t>(texto[i]);
+    bool seguro = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                  c == '.' || c == '~';
+    if (seguro) {
+      codificado += static_cast<char>(c);
+    } else if (c == ' ') {
+      codificado += '+';
+    } else {
+      codificado += '%';
+      codificado += hex[c >> 4];
+      codificado += hex[c & 0x0F];
+    }
+  }
+  return codificado;
 }
 
 bool postarLeitura(const String& jsonPayload) {
@@ -167,9 +191,11 @@ float lerDistanciaHCSR04() {
 // --------------------------------------------------------------------
 void atualizarMotores() {
   // Se o robô foi desligado pelo controle remoto, desliga os motores imediatamente
-  if (!roboLigadoRemotamente) {
-    digitalWrite(PIN_MOTOR_ESQ, LOW);
-    digitalWrite(PIN_MOTOR_DIR, LOW);
+  if (!roboLigadoRemotamente || comandoRemoto == "PARADO") {
+    digitalWrite(PIN_MOTOR_ESQ_IN1, LOW);
+    digitalWrite(PIN_MOTOR_ESQ_IN2, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN3, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN4, LOW);
     return;
   }
 
@@ -178,24 +204,36 @@ void atualizarMotores() {
     // Trava de Segurança: Não permite andar para frente se houver obstáculo a menos de 15cm
     if (ultimaDistanciaMedida > 0.0 && ultimaDistanciaMedida < 15.0) {
       Serial.println("⚠️ ALERTA DE SEGURANÇA: Obstáculo próximo! Motores parados.");
-      digitalWrite(PIN_MOTOR_ESQ, LOW);
-      digitalWrite(PIN_MOTOR_DIR, LOW);
+      digitalWrite(PIN_MOTOR_ESQ_IN1, LOW);
+      digitalWrite(PIN_MOTOR_ESQ_IN2, LOW);
+      digitalWrite(PIN_MOTOR_DIR_IN3, LOW);
+      digitalWrite(PIN_MOTOR_DIR_IN4, LOW);
     } else {
-      digitalWrite(PIN_MOTOR_ESQ, HIGH);
-      digitalWrite(PIN_MOTOR_DIR, HIGH);
+      digitalWrite(PIN_MOTOR_ESQ_IN1, HIGH);
+      digitalWrite(PIN_MOTOR_ESQ_IN2, LOW);
+      digitalWrite(PIN_MOTOR_DIR_IN3, HIGH);
+      digitalWrite(PIN_MOTOR_DIR_IN4, LOW);
     }
-  } 
-  else if (comandoRemoto == "ESQUERDA") {
-    digitalWrite(PIN_MOTOR_ESQ, LOW);
-    digitalWrite(PIN_MOTOR_DIR, HIGH);
-  } 
-  else if (comandoRemoto == "DIREITA") {
-    digitalWrite(PIN_MOTOR_ESQ, HIGH);
-    digitalWrite(PIN_MOTOR_DIR, LOW);
-  } 
-  else { // "TRAS" ou "PARADO"
-    digitalWrite(PIN_MOTOR_ESQ, LOW);
-    digitalWrite(PIN_MOTOR_DIR, LOW);
+  } else if (comandoRemoto == "TRAS") {
+    digitalWrite(PIN_MOTOR_ESQ_IN1, LOW);
+    digitalWrite(PIN_MOTOR_ESQ_IN2, HIGH);
+    digitalWrite(PIN_MOTOR_DIR_IN3, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN4, HIGH);
+  } else if (comandoRemoto == "ESQUERDA") {
+    digitalWrite(PIN_MOTOR_ESQ_IN1, LOW);
+    digitalWrite(PIN_MOTOR_ESQ_IN2, HIGH);
+    digitalWrite(PIN_MOTOR_DIR_IN3, HIGH);
+    digitalWrite(PIN_MOTOR_DIR_IN4, LOW);
+  } else if (comandoRemoto == "DIREITA") {
+    digitalWrite(PIN_MOTOR_ESQ_IN1, HIGH);
+    digitalWrite(PIN_MOTOR_ESQ_IN2, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN3, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN4, HIGH);
+  } else {
+    digitalWrite(PIN_MOTOR_ESQ_IN1, LOW);
+    digitalWrite(PIN_MOTOR_ESQ_IN2, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN3, LOW);
+    digitalWrite(PIN_MOTOR_DIR_IN4, LOW);
   }
 }
 
@@ -261,26 +299,28 @@ void sendMessage(String message) {
 }
 
 // --------------------------------------------------------------------
-// SETUP ATUALIZADO PARA ESP32-S3
+// SETUP PARA ESP32 DEV MODULE
 // --------------------------------------------------------------------
 void setup() {
   // Inicializa a comunicação Serial
   Serial.begin(115200);
 
-  // Aguarda até 3 segundos para a porta USB Serial do ESP32-S3 estabilizar
+  // Aguarda ate 3 segundos para a porta USB Serial estabilizar
   unsigned long tempoInicioSerial = millis();
   while (!Serial && (millis() - tempoInicioSerial < 3000)) {
     delay(10);
   }
 
-  Serial.println("\n--- Inicializando Robô Explorador Físico (ESP32-S3) ---");
+  Serial.println("\n--- Inicializando Robo Explorador Fisico (ESP32 Dev Module) ---");
 
   // Configuração dos Pinos
   pinMode(PIN_LED_VERDE, OUTPUT);
   pinMode(PIN_LED_VERMELHO, OUTPUT);
 
-  pinMode(PIN_MOTOR_ESQ, OUTPUT);
-  pinMode(PIN_MOTOR_DIR, OUTPUT);
+  pinMode(PIN_MOTOR_ESQ_IN1, OUTPUT);
+  pinMode(PIN_MOTOR_ESQ_IN2, OUTPUT);
+  pinMode(PIN_MOTOR_DIR_IN3, OUTPUT);
+  pinMode(PIN_MOTOR_DIR_IN4, OUTPUT);
 
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);

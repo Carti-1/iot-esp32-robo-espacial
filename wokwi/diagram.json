@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "author": "Equipe Robo Explorador",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-analog-joystick", "id": "joystick", "top": -90, "left": 230, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btn", "top": 100, "left": 230, "attrs": { "color": "blue", "label": "Liga / desliga" } },
+    { "type": "wokwi-led", "id": "led_verde", "top": 20, "left": 400, "attrs": { "color": "green", "label": "Ligado" } },
+    { "type": "wokwi-led", "id": "led_vermelho", "top": 90, "left": 400, "attrs": { "color": "red", "label": "Desligado" } },
+    { "type": "wokwi-resistor", "id": "r_verde", "top": 30, "left": 340, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_vermelho", "top": 100, "left": 340, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "esp:3V3", "joystick:VCC", "red", [] ],
+    [ "esp:GND.1", "joystick:GND", "black", [] ],
+    [ "esp:D34", "joystick:VERT", "green", [] ],
+    [ "esp:D35", "joystick:HORZ", "orange", [] ],
+    [ "esp:D2", "btn:1.l", "blue", [] ],
+    [ "btn:2.r", "esp:GND.2", "black", [] ],
+    [ "esp:D4", "r_verde:1", "green", [] ],
+    [ "r_verde:2", "led_verde:A", "green", [] ],
+    [ "led_verde:C", "esp:GND.2", "black", [] ],
+    [ "esp:D5", "r_vermelho:1", "red", [] ],
+    [ "r_vermelho:2", "led_vermelho:A", "red", [] ],
+    [ "led_vermelho:C", "esp:GND.2", "black", [] ],
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ]
+  ],
+  "dependencies": {}
+}
