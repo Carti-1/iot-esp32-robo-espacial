@@ -4,3 +4,5 @@
 #define WIFI_PASSWORD "SENHA_DA_REDE_WIFI"
 #define CALLMEBOT_PHONE "DDD_NUMERO"
 #define CALLMEBOT_API_KEY "SUA_API_KEY"
+// Use o IPv4 do computador na mesma rede do ESP32, sem espacos na URL.
+#define BACKEND_URL "http://192.168.1.100:5000/leituras"

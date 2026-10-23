@@ -1,6 +1,6 @@
 # Robo explorador espacial — Camada de Serviço
 
-Projeto da Camada de Serviço. A API e o SQLite da **Etapa 03** estao implementados. A branch `feat/robo-lab` organiza os arquivos da **Etapa 04**. A integracao entre o firmware e a API segue pendente enquanto a comunicacao da Etapa 02 e ajustada.
+Projeto da Camada de Serviço. A API Python e o SQLite implementam a **Etapa 03**. A branch `feat/robo-lab` organiza os arquivos da **Etapa 04**. O firmware físico envia leituras para a API local; o controle de comandos continua usando Firebase conforme o código de teste da equipe.
 
 ## Estrutura
 
@@ -12,11 +12,13 @@ Projeto da Camada de Serviço. A API e o SQLite da **Etapa 03** estao implementa
 
 ## Firmware do robo
 
-O firmware foi adicionado para versionar o codigo de teste da Etapa 02. Ele ainda consulta comandos pelo Firebase e nao envia as leituras para `POST /leituras`. A rotina de envio a cada 2 segundos, o buffer/reenvio e a consulta de confirmacao devem ser integrados depois que a conexao com a API for resolvida.
+O firmware consulta comandos pelo Firebase e envia as leituras dos sensores a cada 2 segundos para `POST /leituras`. A API deve responder HTTP `201` para confirmar o armazenamento. Se houver falha, o ESP32 mantém até 10 leituras em uma fila na memória e tenta reenviar uma por ciclo de sensores. Se a energia do ESP32 for interrompida, essa fila temporária é perdida.
 
 O codigo de teste usa um HC-SR04 como indicador de presenca, enquanto o edital especifica um sensor PIR. Confirme com a equipe qual componente sera usado e atualize o firmware/README se necessario.
 
-Antes de compilar, copie `firmware/secrets.example.h` para `firmware/secrets.h` e substitua os valores de exemplo. Instale na Arduino IDE as bibliotecas `DHTesp` e `UrlEncode`, selecione a placa ESP32-S3 usada no laboratorio e confira a pinagem com o circuito real. O `secrets.h` fica ignorado pelo Git; nunca coloque senhas ou chaves nesse arquivo de exemplo.
+Antes de compilar, copie `firmware/secrets.example.h` para `firmware/secrets.h` e substitua os valores de exemplo, inclusive `BACKEND_URL`. Para o ESP32 físico, use `http://<IP_DO_COMPUTADOR>:5000/leituras`, sem espaços, onde o IP é o IPv4 do computador na mesma rede Wi-Fi do robô. Inicie a API no computador e permita conexões de entrada na porta 5000 no firewall, se solicitado. Instale na Arduino IDE as bibliotecas `DHTesp` e `UrlEncode`, selecione a placa ESP32-S3 usada no laboratorio e confira a pinagem com o circuito real. O `secrets.h` fica ignorado pelo Git; nunca coloque senhas ou chaves nesse arquivo de exemplo.
+
+O endereço privado do computador só funciona para dispositivos que conseguem alcançar essa rede. O Wokwi não consegue acessar diretamente esse IP privado; use o robô físico na rede local para validar esta integração. O ESP32 não se conecta ao Supabase: o caminho exigido nesta implementação é ESP32 → Flask → SQLite.
 
 O arquivo fornecido continha credenciais reais. Elas foram removidas do firmware versionado; troque a senha Wi-Fi e regenere a chave do CallmeBot antes de continuar usando-as.
 
@@ -64,7 +66,7 @@ A resposta e uma lista JSON ordenada da mais recente para a mais antiga, limitad
 
 No firmware da Etapa 02, monte o JSON com as leituras atualizadas a cada 2 segundos e considere a amostra entregue somente quando receber HTTP `201`. Se a conexao ou a requisicao falhar, mantenha a amostra em uma fila em memoria e tente reenviar quando a rede voltar; remova-a da fila somente apos resposta `201`. Limite a fila para evitar consumo ilimitado de memoria e registre no Monitor Serial as falhas e os reenvios. O endereco deve apontar para o computador que executa esta API e ambos os dispositivos precisam ter conectividade entre si.
 
-Quando a integracao for concluida, atualize esta secao com o endereço da API acessível pelo ESP32 e os passos de teste na rede do laboratorio.
+O código imprime no Monitor Serial o endereço configurado, o status HTTP e o corpo de resposta. `201` significa que a API confirmou o registro; outros códigos devem ser tratados como falha e a amostra fica na fila.
 
 ## Etapa 04 — GitHub
 

@@ -7,6 +7,7 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <time.h>
 #include <UrlEncode.h>
 #include "DHTesp.h"
 #include "secrets.h"
@@ -17,6 +18,7 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 // URL do Firebase apontando exatamente para o nó do comando
 String firebaseURL = "https://iot4-d7802-default-rtdb.firebaseio.com/comando.json";
+const char* backendURL = BACKEND_URL;
 
 // Dados do CallmeBot
 String phoneNumber = CALLMEBOT_PHONE;
@@ -54,6 +56,93 @@ bool alertaEnviado = false;
 String comandoRemoto = "PARADO";
 bool roboLigadoRemotamente = true;
 float ultimaDistanciaMedida = 999.0; // Armazena a última distância lida
+
+// Buffer em RAM para reenviar leituras quando a API estiver indisponivel.
+const size_t MAX_LEITURAS_PENDENTES = 10;
+String leiturasPendentes[MAX_LEITURAS_PENDENTES];
+size_t quantidadeLeiturasPendentes = 0;
+
+String timestampUTC() {
+  time_t agora = time(nullptr);
+  if (agora < 100000) return ""; // NTP ainda nao sincronizou; a API usara o horario do servidor.
+
+  struct tm utc;
+  gmtime_r(&agora, &utc);
+  char texto[21];
+  strftime(texto, sizeof(texto), "%Y-%m-%dT%H:%M:%SZ", &utc);
+  return String(texto);
+}
+
+bool postarLeitura(const String& jsonPayload) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("API: Wi-Fi desconectado; leitura permanece na fila.");
+    return false;
+  }
+
+  HTTPClient http;
+  http.setTimeout(3000);
+  if (!http.begin(backendURL)) {
+    Serial.println("API: URL invalida. Confira BACKEND_URL em secrets.h.");
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  int codigo = http.POST(jsonPayload);
+  String resposta = http.getString();
+  http.end();
+
+  if (codigo == 201) {
+    Serial.print("API: leitura armazenada (HTTP 201): ");
+    Serial.println(resposta);
+    return true;
+  }
+
+  Serial.print("API: envio nao confirmado. HTTP ");
+  Serial.print(codigo);
+  if (resposta.length() > 0) {
+    Serial.print(" - ");
+    Serial.print(resposta);
+  }
+  Serial.println();
+  return false;
+}
+
+void reenviarLeiturasPendentes() {
+  if (quantidadeLeiturasPendentes == 0) return;
+  if (!postarLeitura(leiturasPendentes[0])) return;
+
+  for (size_t i = 1; i < quantidadeLeiturasPendentes; i++) {
+    leiturasPendentes[i - 1] = leiturasPendentes[i];
+  }
+  leiturasPendentes[--quantidadeLeiturasPendentes] = "";
+}
+
+void registrarLeitura(const String& jsonPayload) {
+  if (quantidadeLeiturasPendentes > 0 || !postarLeitura(jsonPayload)) {
+    if (quantidadeLeiturasPendentes == MAX_LEITURAS_PENDENTES) {
+      Serial.println("API: fila cheia; leitura mais recente descartada.");
+      return;
+    }
+    leiturasPendentes[quantidadeLeiturasPendentes++] = jsonPayload;
+    Serial.print("API: leitura guardada na fila. Pendentes: ");
+    Serial.println(quantidadeLeiturasPendentes);
+  }
+}
+
+String criarPayloadLeitura(float temperatura, float umidade, int luminosidade,
+                           int presenca, int probabilidade) {
+  String payload = "{";
+  String timestamp = timestampUTC();
+  if (timestamp.length() > 0) {
+    payload += "\"timestamp\":\"" + timestamp + "\",";
+  }
+  payload += "\"temperatura_c\":" + String(temperatura, 1);
+  payload += ",\"umidade_pct\":" + String(umidade, 1);
+  payload += ",\"luminosidade\":" + String(luminosidade);
+  payload += ",\"presenca\":" + String(presenca);
+  payload += ",\"probabilidade_vida\":" + String(probabilidade);
+  payload += "}";
+  return payload;
+}
 
 // --------------------------------------------------------------------
 // FUNÇÃO PARA LER DISTÂNCIA DO SENSOR ULTRASSÓNICO (HC-SR04)
@@ -209,6 +298,9 @@ void setup() {
   Serial.println("\nConectado com sucesso!");
   Serial.print("IP do Robô: ");
   Serial.println(WiFi.localIP());
+  Serial.print("API de leituras: ");
+  Serial.println(backendURL);
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 }
 
 // --------------------------------------------------------------------
@@ -226,6 +318,9 @@ void loop() {
   // 2. Executa rotina dos sensores e cálculo de vida a cada 2 segundos
   if (tempoAtual - tempoAnteriorSensores >= intervaloSensores) {
     tempoAnteriorSensores = tempoAtual;
+
+    // Reenvia no maximo uma leitura pendente por ciclo de sensores.
+    reenviarLeiturasPendentes();
 
     // Leitura do Sensor DHT22
     TempAndHumidity dadosDHT = dhtSensor.getTempAndHumidity();
@@ -260,6 +355,11 @@ void loop() {
     Serial.print("Sensor de Presença: "); Serial.println(presencaDetectada ? "Presença detectada" : "Sem presença");
     Serial.print("Comando Atual Recebido: "); Serial.println(comandoRemoto);
     Serial.print("Probabilidade de Vida: "); Serial.print(probabilidadeVida); Serial.println("%");
+
+    String payloadLeitura = criarPayloadLeitura(
+      temperatura, umidade, valorLuz, presencaDetectada ? 1 : 0, probabilidadeVida
+    );
+    registrarLeitura(payloadLeitura);
 
     // Lógica de Atuação e Sinalização
     if (!roboLigadoRemotamente) {
