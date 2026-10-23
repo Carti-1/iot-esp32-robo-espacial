@@ -1,12 +1,24 @@
-# Armazenamento de dados do robo explorador
+# Robo explorador espacial — Camada de Serviço
 
-Implementacao da **Etapa 03** do edital: API HTTP em Python, banco SQLite, registro periodico das leituras dos sensores e consulta das 100 leituras mais recentes.
+Projeto da Camada de Serviço. A API e o SQLite da **Etapa 03** estao implementados. A branch `feat/robo-lab` organiza os arquivos da **Etapa 04**. A integracao entre o firmware e a API segue pendente enquanto a comunicacao da Etapa 02 e ajustada.
 
 ## Estrutura
 
 - `backend/app.py`: API Flask com `POST /leituras`, `GET /leituras` e `GET /health`.
-- `backend/leituras.db`: banco criado automaticamente ao iniciar a API.
+- `firmware/robo_explorador.ino`: firmware físico compartilhado para o ESP32-S3 (sensores, motores, Firebase e CallmeBot).
+- `firmware/secrets.example.h`: modelo de configuracao local do firmware. Copie para `firmware/secrets.h` e preencha os valores.
 - `sql/schema.sql`: estrutura da tabela `leituras`.
+- `backend/leituras.db`: banco local criado ao iniciar a API; nao e versionado.
+
+## Firmware do robo
+
+O firmware foi adicionado para versionar o codigo de teste da Etapa 02. Ele ainda consulta comandos pelo Firebase e nao envia as leituras para `POST /leituras`. A rotina de envio a cada 2 segundos, o buffer/reenvio e a consulta de confirmacao devem ser integrados depois que a conexao com a API for resolvida.
+
+O codigo de teste usa um HC-SR04 como indicador de presenca, enquanto o edital especifica um sensor PIR. Confirme com a equipe qual componente sera usado e atualize o firmware/README se necessario.
+
+Antes de compilar, copie `firmware/secrets.example.h` para `firmware/secrets.h` e substitua os valores de exemplo. Instale na Arduino IDE as bibliotecas `DHTesp` e `UrlEncode`, selecione a placa ESP32-S3 usada no laboratorio e confira a pinagem com o circuito real. O `secrets.h` fica ignorado pelo Git; nunca coloque senhas ou chaves nesse arquivo de exemplo.
+
+O arquivo fornecido continha credenciais reais. Elas foram removidas do firmware versionado; troque a senha Wi-Fi e regenere a chave do CallmeBot antes de continuar usando-as.
 
 ## Iniciar o backend
 
@@ -52,4 +64,16 @@ A resposta e uma lista JSON ordenada da mais recente para a mais antiga, limitad
 
 No firmware da Etapa 02, monte o JSON com as leituras atualizadas a cada 2 segundos e considere a amostra entregue somente quando receber HTTP `201`. Se a conexao ou a requisicao falhar, mantenha a amostra em uma fila em memoria e tente reenviar quando a rede voltar; remova-a da fila somente apos resposta `201`. Limite a fila para evitar consumo ilimitado de memoria e registre no Monitor Serial as falhas e os reenvios. O endereco deve apontar para o computador que executa esta API e ambos os dispositivos precisam ter conectividade entre si.
 
-O firmware da Etapa 02 ainda nao esta nesta pasta; por isso, a inclusao do POST e da fila de reenvio deve ser feita no codigo do ESP32 quando o colega compartilhar essa parte.
+Quando a integracao for concluida, atualize esta secao com o endereço da API acessível pelo ESP32 e os passos de teste na rede do laboratorio.
+
+## Etapa 04 — GitHub
+
+A branch de trabalho e `feat/robo-lab`. Ela contem o firmware, o backend Python, o esquema SQL e este README. Para publicar novos commits nessa branch:
+
+```powershell
+git add README.md backend firmware sql requirements.txt .gitignore
+git commit -m "Atualiza projeto do robo explorador"
+git push -u origin feat/robo-lab
+```
+
+O banco SQLite e as configuracoes locais nao devem ser adicionados ao Git.
